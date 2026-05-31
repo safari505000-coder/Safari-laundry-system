@@ -52,7 +52,6 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { assertOrderStatusTransition } from './order-status.machine';
 import {
   PAYMENT_LINK_VALIDITY_MS,
-  POS_DELIVERY_FEE_KD,
   POS_ORDER_INTERACTIVE_TX,
   STALE_QUICK_ORDER_THRESHOLD_MS,
   terminalStatuses,
@@ -65,7 +64,6 @@ import { orderDetailSelect } from './order-selects';
 import {
   mapPosCheckoutLineItems,
   reconcileLineItems,
-  resolveLaundryTierPrice,
   resolvePosCheckoutPaymentMethod,
 } from './order-pos-pricing.util';
 import {
@@ -83,6 +81,8 @@ import {
 import { OrderCustomerNotificationService } from './order-customer-notification.service';
 import { OrderPublicInvoiceService } from './order-public-invoice.service';
 import { OrderCollectionsReadService } from './order-collections-read.service';
+import { OrderPosPricingService } from './order-pos-pricing.service';
+import { OrderCustomerResolverService } from './order-customer-resolver.service';
 import { PassThrough } from 'node:stream';
 
 export { orderDetailSelect } from './order-selects';
@@ -111,6 +111,8 @@ export class OrdersService {
     private readonly events: EventEmitter2,
     private readonly debtVisibility: DebtVisibilityService,
     private readonly collectionsRead: OrderCollectionsReadService,
+    private readonly posPricing: OrderPosPricingService,
+    private readonly customerResolver: OrderCustomerResolverService,
   ) {}
 
   /**
@@ -314,7 +316,11 @@ export class OrdersService {
     }
   }
 
-  private async pricePosCheckoutLines(
+  /**
+   * Phase 4 facade → {@link OrderPosPricingService}. OrdersService stays the
+   * transaction owner; the pricing service operates only on the passed `tx`.
+   */
+  private pricePosCheckoutLines(
     tx: Prisma.TransactionClient,
     actorUserId: string,
     lineItems?: OrderLineItemDto[],
@@ -322,105 +328,10 @@ export class OrdersService {
     lineCreates: PosPricedLineCreate[];
     totalPriceDecimal: Prisma.Decimal;
   }> {
-    const input = lineItems ?? [];
-    if (input.length === 0) {
-      throw new BadRequestException('POS checkout requires line items.');
-    }
-
-    const actor = await tx.user.findUnique({
-      where: { id: actorUserId },
-      select: { branchId: true },
-    });
-    const branchId = actor?.branchId ?? null;
-    const itemIds = [
-      ...new Set(
-        input
-          .map((line) => line.laundryPriceListItemId)
-          .filter((id): id is string => typeof id === 'string' && id.length > 0),
-      ),
-    ];
-    if (itemIds.length !== input.length) {
-      throw new BadRequestException(
-        'POS checkout lines must reference catalog item ids.',
-      );
-    }
-
-    const items = await tx.laundryPriceListItem.findMany({
-      where: { id: { in: itemIds }, isActive: true },
-      include: {
-        branchOverrides: branchId ? { where: { branchId } } : true,
-      },
-    });
-    const byId = new Map(items.map((item) => [item.id, item]));
-    let total = new Prisma.Decimal(0);
-    const lineCreates: PosPricedLineCreate[] = [];
-
-    for (const line of input) {
-      const serviceKey = line.posServiceKey;
-      if (
-        serviceKey !== 'NORMAL' &&
-        serviceKey !== 'URGENT' &&
-        serviceKey !== 'PRESS_ONLY' &&
-        serviceKey !== 'URGENT_PRESS'
-      ) {
-        throw new BadRequestException('POS checkout lines must include service tier.');
-      }
-      if (!(line.quantity > 0)) {
-        throw new BadRequestException('Each line item must have a positive quantity.');
-      }
-      const item = byId.get(line.laundryPriceListItemId!);
-      if (!item) {
-        throw new BadRequestException('Selected catalog item is inactive or missing.');
-      }
-      if (item.manualEntry) {
-        throw new BadRequestException(
-          'Manual-price catalog items are not allowed in mobile POS checkout.',
-        );
-      }
-      const unitPrice = resolveLaundryTierPrice(item, serviceKey);
-      if (unitPrice.lte(0)) {
-        throw new BadRequestException('Selected service has no positive catalog price.');
-      }
-      const quantity = new Prisma.Decimal(Number(line.quantity).toFixed(4));
-      const labelSuffix =
-        serviceKey === 'NORMAL'
-          ? 'غسيل عادي'
-          : serviceKey === 'URGENT'
-            ? 'خدمة سريعة'
-            : serviceKey === 'PRESS_ONLY'
-              ? 'كي فقط'
-              : 'دراي كلين سريع';
-      total = total.plus(quantity.mul(unitPrice));
-      lineCreates.push({
-        label: `${item.nameAr} — ${labelSuffix}`,
-        starchOption: 'NONE',
-        quantity: quantity.toFixed(4),
-        unitPrice: unitPrice.toFixed(4),
-        stockItemId: line.stockItemId ?? null,
-      });
-    }
-
-    total = total.plus(POS_DELIVERY_FEE_KD);
-    lineCreates.push({
-      label: 'توصيل داخل المنطقة',
-      starchOption: 'NONE',
-      quantity: '1.0000',
-      unitPrice: POS_DELIVERY_FEE_KD.toFixed(4),
-      stockItemId: null,
-    });
-
-    return {
-      lineCreates,
-      totalPriceDecimal: new Prisma.Decimal(total.toFixed(4)),
-    };
+    return this.posPricing.pricePosCheckoutLinesTx(tx, actorUserId, lineItems);
   }
 
-  /**
-   * Driver POS checkout pricing:
-   * - Catalog-only payloads (mobile garment lines) → server-side tier pricing + delivery row.
-   * - Mixed/receipt payloads (VIP, attached-invoice delivery @ 0) → trust client line totals.
-   */
-  private async resolvePosCheckoutPricing(
+  private resolvePosCheckoutPricing(
     tx: Prisma.TransactionClient,
     actorUserId: string,
     dto: PosCheckoutDto,
@@ -428,101 +339,27 @@ export class OrdersService {
     lineCreates: PosPricedLineCreate[];
     totalPriceDecimal: Prisma.Decimal;
   }> {
-    const items = dto.lineItems ?? [];
-    if (items.length === 0) {
-      throw new BadRequestException('POS checkout requires line items.');
-    }
-    const catalogOnly = items.every(
-      (line) =>
-        typeof line.laundryPriceListItemId === 'string' &&
-        line.laundryPriceListItemId.length > 0 &&
-        line.posServiceKey,
-    );
-    if (catalogOnly) {
-      return this.pricePosCheckoutLines(tx, actorUserId, dto.lineItems);
-    }
-    reconcileLineItems(dto.totalPrice, items);
-    const mapped = mapPosCheckoutLineItems(items);
-    if (!mapped?.length) {
-      throw new BadRequestException('POS checkout requires line items.');
-    }
-    for (const line of mapped) {
-      if (!(line.quantity > 0 && line.unitPrice >= 0)) {
-        throw new BadRequestException(
-          'Each line item must have a positive quantity and a non-negative unit price',
-        );
-      }
-    }
-    return {
-      lineCreates: mapped.map((line) => ({
-        label: line.label,
-        starchOption: 'NONE' as const,
-        quantity: Number(line.quantity).toFixed(4),
-        unitPrice: Number(line.unitPrice).toFixed(4),
-        stockItemId: line.stockItemId,
-      })),
-      totalPriceDecimal: new Prisma.Decimal(Number(dto.totalPrice).toFixed(4)),
-    };
+    return this.posPricing.resolvePosCheckoutPricingTx(tx, actorUserId, dto);
   }
 
-  private async findCustomerByAnyPhone(
+  /** Phase 4 facade → {@link OrderCustomerResolverService}. */
+  private findCustomerByAnyPhone(
     tx: Prisma.TransactionClient,
     phoneCompact: string,
-  ) {
-    return tx.customer.findFirst({
-      where: {
-        OR: [{ phone: phoneCompact }, { phone2: phoneCompact }],
-      },
-    });
+  ): ReturnType<OrderCustomerResolverService['findCustomerByAnyPhoneTx']> {
+    return this.customerResolver.findCustomerByAnyPhoneTx(tx, phoneCompact);
   }
 
-  private async resolveQuickOrderCustomerId(
+  private resolveQuickOrderCustomerId(
     tx: Prisma.TransactionClient,
     dto: CreateOrderQuickDto,
     phoneCompact: string,
   ): Promise<string> {
-    if (dto.customerId) {
-      const existing = await tx.customer.findUnique({
-        where: { id: dto.customerId },
-      });
-      if (!existing) {
-        throw new NotFoundException('Customer not found');
-      }
-      const existingCompact = existing.phone.replace(/[\s-]/g, '').trim();
-      const existingCompact2 = existing.phone2?.replace(/[\s-]/g, '').trim();
-      if (existingCompact !== phoneCompact && existingCompact2 !== phoneCompact) {
-        throw new BadRequestException(
-          'customerPhone does not match the selected customer',
-        );
-      }
-      const name = dto.customerDisplayName?.trim();
-      if (name) {
-        await tx.customer.update({
-          where: { id: existing.id },
-          data: { displayName: name },
-        });
-      }
-      return existing.id;
-    }
-    const existingByPhone = await this.findCustomerByAnyPhone(tx, phoneCompact);
-    const customer =
-      existingByPhone ?
-        await tx.customer.update({
-          where: { id: existingByPhone.id },
-          data: {
-            displayName:
-              dto.customerDisplayName?.trim() || existingByPhone.displayName,
-            address: dto.customerAddress?.trim() || existingByPhone.address,
-          },
-        })
-      : await tx.customer.create({
-          data: {
-            phone: phoneCompact,
-            address: dto.customerAddress?.trim() || null,
-            displayName: dto.customerDisplayName?.trim() || null,
-          },
-        });
-    return customer.id;
+    return this.customerResolver.resolveQuickOrderCustomerIdTx(
+      tx,
+      dto,
+      phoneCompact,
+    );
   }
 
   /** Driver-led capture: order is immediately owned by the creating driver. */

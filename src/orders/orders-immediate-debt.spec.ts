@@ -1,6 +1,8 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CashStatus, OrderStatus, PosPaymentMethod, Prisma, ServiceType } from '@prisma/client';
 import { OrdersService } from './orders.service';
+import { OrderPosPricingService } from './order-pos-pricing.service';
+import { OrderCustomerResolverService } from './order-customer-resolver.service';
 
 const DRIVER_ID = '11111111-1111-4111-8111-111111111111';
 const CUSTOMER_ID = '22222222-2222-4222-8222-222222222222';
@@ -127,6 +129,8 @@ function makeService() {
     new EventEmitter2(),
     {} as never,
     {} as never,
+    new OrderPosPricingService(),
+    new OrderCustomerResolverService(),
   );
   return { service, prisma, tx, customerLedger };
 }
@@ -218,6 +222,8 @@ function makePricedPosService() {
     new EventEmitter2(),
     {} as never,
     {} as never,
+    new OrderPosPricingService(),
+    new OrderCustomerResolverService(),
   );
   return { service, tx, customerLedger, generalLedger };
 }
