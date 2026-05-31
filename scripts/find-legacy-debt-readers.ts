@@ -77,6 +77,10 @@ const SKIP_DIR_NAMES = new Set([
 //     read, NOT a UI render.
 //   • payments/, call-center/, customers/ controllers/services/dto —
 //     thin response builders that pass server-canonical data through.
+//   • orders/order-collections-read.service — Phase 3 extraction of the
+//     server-side Collections / market-debt read paths that already lived
+//     (allowlisted) inside orders.service.ts. Same source-of-truth reads,
+//     new file; carries the same allowlist exemption as orders.service.
 //   • V24 — Wave B (Frontend Purge):
 //       - finance/sales-debt-analytics/ is the server-side
 //         replacement for the deleted FE
@@ -88,7 +92,7 @@ const SKIP_DIR_NAMES = new Set([
 //         `// allow-legacy-debt-reader (V20.6 Phase 2…)` pragmas
 //         that lived in the deleted FE helper now travel to the
 //         server inside the service docblock.
-const PATH_ALLOWLIST_RE = /(?:[\\/])(?:scripts[\\/]find-legacy-debt-readers|finance[\\/]audit[\\/]|customer-ledger[\\/]|finance[\\/]debt-customer-aggregates\.util|general-ledger[\\/]|prisma[\\/]|orders[\\/]debt-kd-breakdown|finance[\\/]canonical-customer-debt\.util|finance[\\/]services[\\/]debt\.service|finance[\\/]invoice-payment-status\.service|common[\\/]services[\\/]payments\.service|orders[\\/]orders\.service|finance[\\/]outstanding[\\/]|invoice-audit[\\/]|accounting[\\/]|reports[\\/]|feedback[\\/]|bootstrap[\\/]|customer-notifications[\\/]|subscribers[\\/]|commissions[\\/]|serials[\\/]|debt-transfers[\\/]|read-models[\\/]|finance[\\/]snapshots[\\/]|finance[\\/]services[\\/]|finance[\\/]fraud[\\/]|finance[\\/]collections-intelligence[\\/]|finance[\\/]debt-visibility[\\/]|finance[\\/]timeline[\\/]|finance[\\/]sales-debt-analytics[\\/]|payments[\\/]payments\.controller|call-center[\\/]call-center\.(?:service|controller)|call-center[\\/]dto[\\/])/;
+const PATH_ALLOWLIST_RE = /(?:[\\/])(?:scripts[\\/]find-legacy-debt-readers|finance[\\/]audit[\\/]|customer-ledger[\\/]|finance[\\/]debt-customer-aggregates\.util|general-ledger[\\/]|prisma[\\/]|orders[\\/]debt-kd-breakdown|finance[\\/]canonical-customer-debt\.util|finance[\\/]services[\\/]debt\.service|finance[\\/]invoice-payment-status\.service|common[\\/]services[\\/]payments\.service|orders[\\/]orders\.service|orders[\\/]order-collections-read\.service|finance[\\/]outstanding[\\/]|invoice-audit[\\/]|accounting[\\/]|reports[\\/]|feedback[\\/]|bootstrap[\\/]|customer-notifications[\\/]|subscribers[\\/]|commissions[\\/]|serials[\\/]|debt-transfers[\\/]|read-models[\\/]|finance[\\/]snapshots[\\/]|finance[\\/]services[\\/]|finance[\\/]fraud[\\/]|finance[\\/]collections-intelligence[\\/]|finance[\\/]debt-visibility[\\/]|finance[\\/]timeline[\\/]|finance[\\/]sales-debt-analytics[\\/]|payments[\\/]payments\.controller|call-center[\\/]call-center\.(?:service|controller)|call-center[\\/]dto[\\/])/;
 
 // Magic comment to whitelist a single line.
 // V20.6 — Phase 2 also accepts JSX comment style `{/* ... */}`

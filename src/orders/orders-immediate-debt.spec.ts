@@ -126,6 +126,7 @@ function makeService() {
     { logFinancialEvent: jest.fn().mockResolvedValue(undefined) } as never,
     new EventEmitter2(),
     {} as never,
+    {} as never,
   );
   return { service, prisma, tx, customerLedger };
 }
@@ -215,6 +216,7 @@ function makePricedPosService() {
     { assertNotBlocked: jest.fn().mockResolvedValue(undefined) } as never,
     { logFinancialEvent: jest.fn().mockResolvedValue(undefined) } as never,
     new EventEmitter2(),
+    {} as never,
     {} as never,
   );
   return { service, tx, customerLedger, generalLedger };
