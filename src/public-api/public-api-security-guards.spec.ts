@@ -15,6 +15,8 @@ describe('Public API security guards', () => {
     expect(controller).toContain("@Get('orders/requests')");
     expect(controller).toContain("@Post('customer-auth/request-otp')");
     expect(controller).toContain("@Post('customer-auth/verify-otp')");
+    expect(controller).toContain("@Post('customer-auth/refresh-token')");
+    expect(controller).toContain("@Post('customer-auth/logout')");
     expect(controller).toContain("@Post('customer-auth/dev-login')");
     expect(controller).toContain("@Get('customer-order-requests')");
     expect(controller).toContain("@Get('customer-portal/orders/:orderId/delivery')");

@@ -11,6 +11,7 @@ import { CreateCustomerBalancePaymentLinkDto } from './dto/create-customer-balan
 import { CreateCustomerPaymentLinkDto } from './dto/create-customer-payment-link.dto';
 import { RequestCustomerOtpDto } from './dto/request-customer-otp.dto';
 import { VerifyCustomerOtpDto } from './dto/verify-customer-otp.dto';
+import { CustomerRefreshTokenRequestDto } from './dto/customer-refresh-token.dto';
 import { CustomerPortalAuthService } from './customer-portal-auth.service';
 import { RegisterCustomerPushTokenDto } from './dto/register-customer-push-token.dto';
 import { RegisterEmployeePushTokenDto } from './dto/register-employee-push-token.dto';
@@ -115,6 +116,34 @@ export class PublicApiController {
   @ApiOperation({ summary: 'Verify customer portal OTP' })
   verifyOtp(@Body() dto: VerifyCustomerOtpDto) {
     return this.customerPortalAuth.verifyOtp(dto.phone, dto.code);
+  }
+
+  @Public('Customer refresh-token exchange must work without a valid access JWT.')
+  @Post('customer-auth/refresh-token')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_OTP_THROTTLE_PER_MIN ?? '', 10) || 10,
+    },
+  })
+  @ApiOperation({ summary: 'Refresh customer portal access token' })
+  refreshCustomerToken(@Body() dto: CustomerRefreshTokenRequestDto) {
+    return this.customerPortalAuth.refreshCustomerAccessToken(dto.refreshToken);
+  }
+
+  @Public('Customer logout revokes refresh tokens without requiring access JWT.')
+  @Post('customer-auth/logout')
+  @Throttle({
+    default: {
+      ttl: 60_000,
+      limit:
+        Number.parseInt(process.env.PUBLIC_OTP_THROTTLE_PER_MIN ?? '', 10) || 10,
+    },
+  })
+  @ApiOperation({ summary: 'Logout customer portal refresh session' })
+  async logoutCustomer(@Body() dto: CustomerRefreshTokenRequestDto) {
+    await this.customerPortalAuth.revokeCustomerRefreshToken(dto.refreshToken);
   }
 
   @Public('Temporary dev-only customer login by phone (disabled in production by default).')

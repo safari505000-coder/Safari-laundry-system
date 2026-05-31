@@ -5,12 +5,15 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { SafariRole } from '@prisma/client';
-import * as crypto from 'node:crypto';
 import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { kuwaitHour } from '../common/time/kuwait-time';
 import { OperatingHoursService } from '../system/operating-hours.service';
 import { UsersService } from '../users/users.service';
+import {
+  generateRefreshTokenRaw,
+  sha256Hex,
+} from '../common/auth/refresh-token.util';
 import { BcryptService } from './bcrypt.service';
 import { ChangePasswordBodyDto } from './dto/change-password-body.dto';
 import { LoginDto } from './dto/login.dto';
@@ -60,15 +63,6 @@ const REFRESH_TOKEN_DAYS = Number.parseInt(
 function isWorkingHoursBypassed(): boolean {
   const raw = (process.env.AUTH_BYPASS_WORKING_HOURS ?? '').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-}
-
-function sha256Hex(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-function generateRefreshTokenRaw(): string {
-  // 48 random bytes → 64-char base64url; gives ~384 bits of entropy.
-  return crypto.randomBytes(48).toString('base64url');
 }
 
 type UserAuthRow = {
