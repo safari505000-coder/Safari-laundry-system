@@ -256,6 +256,11 @@ describe('V21 Phase 1 — Anti-bypass suite', () => {
       new Set([
         'src/finance/v21-canonical-banking-guards.spec.ts',
         'src/finance/v21-phase1-core-freeze.spec.ts',
+        // Audit chain serialization: pg_advisory_xact_lock() is a LOCK
+        // acquisition (no row mutation) with no Prisma-native equivalent. It
+        // serializes audit appends so concurrent writers can't fork the
+        // tamper-evident hash chain. Not a financial-table mutation.
+        'src/audit-logs/audit-logs.service.ts',
       ]),
       true,
     );
