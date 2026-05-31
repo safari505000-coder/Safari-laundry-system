@@ -18,6 +18,7 @@ import { PublicInvoiceController } from './public-invoice.controller';
 import { OrderDeliveryService } from './order-delivery.service';
 import { OrderCustomerNotificationService } from './order-customer-notification.service';
 import { OrderPublicInvoiceService } from './order-public-invoice.service';
+import { OrderCollectionsReadService } from './order-collections-read.service';
 import { OrdersService } from './orders.service';
 import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
 
@@ -43,6 +44,7 @@ import { StaleQuickOrdersCronService } from './stale-quick-orders.cron';
     OrderDeliveryService,
     OrderCustomerNotificationService,
     OrderPublicInvoiceService,
+    OrderCollectionsReadService,
     ExpoPushService,
     StaleQuickOrdersCronService,
     AuditService,

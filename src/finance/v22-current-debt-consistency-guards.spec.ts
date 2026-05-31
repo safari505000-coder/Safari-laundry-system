@@ -41,7 +41,7 @@ describe('V22 current-debt consistency guards', () => {
   });
 
   it('collections list filters by invoice remaining but displays banking-core capped debt', () => {
-    const src = read('src/orders/orders.service.ts');
+    const src = read('src/orders/order-collections-read.service.ts');
     const method = src.slice(
       src.indexOf('async listUnpaidCollectionOrders('),
       src.indexOf('async listUnpaidCollectionOrdersReport('),
@@ -63,7 +63,7 @@ describe('V22 current-debt consistency guards', () => {
   it('collections payment links charge the canonical table amount and refresh on drift', () => {
     const payments = read('src/common/services/payments.service.ts');
     const callCenter = read('src/call-center/call-center.service.ts');
-    const orders = read('src/orders/orders.service.ts');
+    const orders = read('src/orders/order-collections-read.service.ts');
 
     expect(payments).toContain('computeOrderRemainingBalancesBatch');
     expect(payments).toContain('amountKd: chargeAmount.toFixed(4)');
@@ -232,7 +232,7 @@ describe('V22 current-debt consistency guards', () => {
     const websitePayments = read(
       'src/public-api/website-customer-payments.service.ts',
     );
-    const orders = read('src/orders/orders.service.ts');
+    const orders = read('src/orders/order-collections-read.service.ts');
 
     expect(websitePayments).toContain(
       'debtVisibility.getCustomerVisibleDebt',
