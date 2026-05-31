@@ -27,8 +27,8 @@ import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   PaymentsService,
-  isValidUpaymentsPaymentStatusInquiryId,
 } from '../common/services/payments.service';
+import { isValidUpaymentsPaymentStatusInquiryId } from '../common/services/upayments-track.util';
 import { APP_VERSION } from '../common/constants/app-version';
 import { Public } from '../auth/decorators/roles.decorator';
 import { withPaymentFinalizeSpan } from '../common/tracing/payment-finalize-span';
