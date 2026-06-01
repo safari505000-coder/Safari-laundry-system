@@ -1881,6 +1881,17 @@ exports[`RBAC lock freezes every endpoint @Roles decorator 1`] = `
     ],
   },
   {
+    "file": "src/financial-integrity/accounting-health.controller.ts",
+    "handler": "n",
+    "method": "GET",
+    "path": "/owner/accounting-health",
+    "roleSource": "method",
+    "roles": [
+      "ACCOUNTANT",
+      "OWNER",
+    ],
+  },
+  {
     "file": "src/owner-command-center/owner-command-center.controller.ts",
     "handler": "n",
     "method": "GET",

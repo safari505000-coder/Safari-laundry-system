@@ -195,6 +195,7 @@ export class OwnerCommandCenterService {
       failedPayments,
       security,
       health,
+      accountingIntegrity,
     ] = await Promise.all([
       this.getDailyRevenue(),
       this.getOutstandingDebt(),
@@ -204,6 +205,7 @@ export class OwnerCommandCenterService {
       this.prisma.journalFailureLog.count({ where: { createdAt: { gte: since24h } } }),
       this.getSecurityAlerts(since24h),
       this.getSystemHealth(),
+      this.getAccountingIntegrity(),
     ]);
 
     return {
@@ -216,6 +218,7 @@ export class OwnerCommandCenterService {
       payrollDue: payroll,
       failedPayments: { last24h: failedPayments },
       securityAlerts: security,
+      accountingIntegrity,
       systemAlerts: {
         ok: health.ok,
         alerts: health.alerts,
@@ -225,6 +228,57 @@ export class OwnerCommandCenterService {
         failedJobs: health.failedJobs,
       },
     };
+  }
+
+  /**
+   * FINANCIAL HARDENING — latest persisted accounting-integrity verdict.
+   * Read directly from the append-only DailyAccountingIntegrityReport so
+   * the command center surfaces ledger drift / unbalanced entries / broken
+   * chains without coupling to the financial-integrity module.
+   */
+  private async getAccountingIntegrity(): Promise<{
+    status: 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
+    generatedAt: string | null;
+    criticalCount: number;
+    warningCount: number;
+    driftCount: number;
+  }> {
+    try {
+      const row = await this.prisma.dailyAccountingIntegrityReport.findFirst({
+        orderBy: { generatedAt: 'desc' },
+        select: {
+          status: true,
+          generatedAt: true,
+          criticalCount: true,
+          warningCount: true,
+          driftCount: true,
+        },
+      });
+      if (!row) {
+        return {
+          status: 'UNKNOWN',
+          generatedAt: null,
+          criticalCount: 0,
+          warningCount: 0,
+          driftCount: 0,
+        };
+      }
+      return {
+        status: row.status as 'HEALTHY' | 'WARNING' | 'CRITICAL',
+        generatedAt: row.generatedAt.toISOString(),
+        criticalCount: row.criticalCount,
+        warningCount: row.warningCount,
+        driftCount: row.driftCount,
+      };
+    } catch {
+      return {
+        status: 'UNKNOWN',
+        generatedAt: null,
+        criticalCount: 0,
+        warningCount: 0,
+        driftCount: 0,
+      };
+    }
   }
 
   private async getDailyRevenue(): Promise<{ kd: number; orders: number }> {

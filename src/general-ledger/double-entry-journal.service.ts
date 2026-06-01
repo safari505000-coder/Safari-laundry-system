@@ -326,29 +326,10 @@ export class DoubleEntryJournalService {
     try {
       return await this.mirrorDebtLedgerEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const sourceRef = input.sourceRef?.trim();
-      if (
-        sourceRef &&
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002'
-      ) {
-        const existing = await db.journalEntry.findUnique({
-          where: { sourceRef },
-          select: { id: true },
-        });
-        if (existing) return existing;
-      }
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError
-          ? err.code
-          : null;
-      this.logJournalWriteFailure(errorCode, message);
-
-      await this.persistFailure(input, message, errorCode);
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // FINANCIAL HARDENING — route through the shared Phase 16 handler so
+      // this wrapper honours JOURNAL_FAIL_CLOSED_CRITICAL too. Default
+      // (flag off) behaviour is unchanged: persist + trip breaker + null.
+      return this.handleCriticalSafeFailure(db, err, input);
     }
   }
 
@@ -622,25 +603,15 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendWalletAbsorptionEntryV3(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'WALLET_ABSORPTION_V3',
-          sourceRef: `JOURNAL:WALLET_ABSORPTION_V3:${input.orderId}:APPLIED`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount: input.amount,
-          actorUserId: input.actorUserId,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // FINANCIAL HARDENING — fail-closed-aware (default unchanged).
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'WALLET_ABSORPTION_V3',
+        sourceRef: `JOURNAL:WALLET_ABSORPTION_V3:${input.orderId}:APPLIED`,
+        customerId: input.customerId,
+        orderId: input.orderId,
+        amount: input.amount,
+        actorUserId: input.actorUserId,
+      });
     }
   }
 
@@ -834,25 +805,15 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendWalletAbsorptionEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'WALLET_ABSORPTION',
-          sourceRef: `JOURNAL:WALLET_ABSORPTION:${input.orderId}:APPLIED`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount: input.amount,
-          actorUserId: input.actorUserId,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // FINANCIAL HARDENING — fail-closed-aware (default unchanged).
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'WALLET_ABSORPTION',
+        sourceRef: `JOURNAL:WALLET_ABSORPTION:${input.orderId}:APPLIED`,
+        customerId: input.customerId,
+        orderId: input.orderId,
+        amount: input.amount,
+        actorUserId: input.actorUserId,
+      });
     }
   }
 
@@ -1073,25 +1034,15 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendInvoiceCancellationEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'INVOICE_CANCELED',
-          sourceRef: `JOURNAL:INVOICE_CANCELED:${input.orderId}`,
-          customerId: input.customerId,
-          orderId: input.orderId,
-          amount: input.remainingArAmount,
-          actorUserId: input.actorUserId,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // FINANCIAL HARDENING — fail-closed-aware (default unchanged).
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'INVOICE_CANCELED',
+        sourceRef: `JOURNAL:INVOICE_CANCELED:${input.orderId}`,
+        customerId: input.customerId,
+        orderId: input.orderId,
+        amount: input.remainingArAmount,
+        actorUserId: input.actorUserId,
+      });
     }
   }
 
@@ -1171,25 +1122,15 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendDebtDiscountEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'DEBT_DISCOUNT',
-          sourceRef: `JOURNAL:DEBT_DISCOUNT:${input.discountRef}`,
-          customerId: input.customerId,
-          orderId: input.orderId ?? null,
-          amount: input.amount,
-          actorUserId: input.actorUserId,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      // FINANCIAL HARDENING — fail-closed-aware (default unchanged).
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'DEBT_DISCOUNT',
+        sourceRef: `JOURNAL:DEBT_DISCOUNT:${input.discountRef}`,
+        customerId: input.customerId,
+        orderId: input.orderId ?? null,
+        amount: input.amount,
+        actorUserId: input.actorUserId,
+      });
     }
   }
 
@@ -1313,28 +1254,18 @@ export class DoubleEntryJournalService {
     try {
       return await this.appendSubscriptionRefundEntry(db, input);
     } catch (err) {
-      this.rethrowIfPeriodLock(err);
-      const message = (err as Error)?.message ?? String(err);
-      const errorCode =
-        err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
+      // FINANCIAL HARDENING — fail-closed-aware (default unchanged).
       const totalAmount = this.decimal(input.giftRemovalAmount).add(
         this.decimal(input.cashRefundAmount),
       );
-      this.logJournalWriteFailure(errorCode, message);
-      await this.persistFailure(
-        {
-          source: 'SUBSCRIPTION_REFUND',
-          sourceRef: `JOURNAL:SUBSCRIPTION_REFUND:${input.subscriptionId}`,
-          customerId: input.customerId,
-          orderId: null,
-          amount: totalAmount,
-          actorUserId: input.actorUserId,
-        },
-        message,
-        errorCode,
-      );
-      await this.tripBreakerIfNeeded(input.customerId);
-      return null;
+      return this.handleCriticalSafeFailure(db, err, {
+        source: 'SUBSCRIPTION_REFUND',
+        sourceRef: `JOURNAL:SUBSCRIPTION_REFUND:${input.subscriptionId}`,
+        customerId: input.customerId,
+        orderId: null,
+        amount: totalAmount,
+        actorUserId: input.actorUserId,
+      });
     }
   }
 
