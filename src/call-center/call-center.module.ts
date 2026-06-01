@@ -14,6 +14,7 @@ import { DebtVisibilityModule } from '../finance/debt-visibility/debt-visibility
 import { PrismaModule } from '../prisma/prisma.module';
 import { CallCenterController } from './call-center.controller';
 import { CallCenterService } from './call-center.service';
+import { CallCenterSubscriptionReadService } from './call-center-subscription-read.service';
 import { ControlTowerModule } from './control-tower/control-tower.module';
 import { DailyCollectionsReconciliationCronService } from './daily-collections-reconciliation.cron';
 import { PublicStatementController } from './public-statement.controller';
@@ -35,6 +36,10 @@ import { PublicStatementController } from './public-statement.controller';
     CallCenterController,
     PublicStatementController,
   ],
-  providers: [CallCenterService, DailyCollectionsReconciliationCronService],
+  providers: [
+    CallCenterService,
+    CallCenterSubscriptionReadService,
+    DailyCollectionsReconciliationCronService,
+  ],
 })
 export class CallCenterModule {}
