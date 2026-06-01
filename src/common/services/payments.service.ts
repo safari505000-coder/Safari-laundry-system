@@ -47,6 +47,12 @@ import {
   resolveUpaymentsChargePaymentUrlFromRoot,
   tryParseTrackIdFromRecord,
 } from './upayments-track.util';
+import {
+  looksLikeLocalHost,
+  normalizeCallbackStatus,
+  paymentLinkChargeMatches,
+  readStoredPaymentLinkChargeKd,
+} from './payments-callback.util';
 
 export type CreatePaymentLinkParams = {
   orderId: string;
@@ -102,10 +108,6 @@ export class PaymentsService implements OnModuleInit {
     ).replace(/\/$/, '');
   }
 
-  private looksLikeLocalHost(url: string): boolean {
-    return /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(url);
-  }
-
   /**
    * يتحقق عند التشغيل من إعدادات بوابة الدفع والروابط العامة اللازمة لتحصيل الأموال.
    * Validates payment-gateway and public callback configuration at startup for money collection flows.
@@ -123,19 +125,19 @@ export class PaymentsService implements OnModuleInit {
       );
     }
     if (inProd && !this.isPublicMockCheckoutAvailable()) {
-      if (this.looksLikeLocalHost(this.webAppUrl)) {
+      if (looksLikeLocalHost(this.webAppUrl)) {
         this.logger.error(
           'PAYMENTS: PUBLIC_WEB_APP_URL is localhost (or loopback) while real UPayments is enabled. After pay, the gateway redirects the customer to this URL — phones cannot open it. Set PUBLIC_WEB_APP_URL to your public SPA (e.g. https://www.safariomni.com) and redeploy.',
         );
       }
       if (!this.callbackPublicUrl) {
         const fallback = (process.env.PUBLIC_API_URL ?? '').replace(/\/$/, '');
-        if (!fallback || this.looksLikeLocalHost(fallback)) {
+        if (!fallback || looksLikeLocalHost(fallback)) {
           this.logger.error(
             'PAYMENTS: PAYMENTS_CALLBACK_PUBLIC_URL is unset and PUBLIC_API_URL is missing or not internet-reachable. UPayments cannot POST /api/payments/callback; orders may stay unpaid. Set PAYMENTS_CALLBACK_PUBLIC_URL to the public https base of this API (same as deploy/render-production.env).',
           );
         }
-      } else if (this.looksLikeLocalHost(this.callbackPublicUrl)) {
+      } else if (looksLikeLocalHost(this.callbackPublicUrl)) {
         this.logger.error(
           'PAYMENTS: PAYMENTS_CALLBACK_PUBLIC_URL must be a public https host — not localhost. UPayments server-to-server callback will never reach your app.',
         );
@@ -634,27 +636,7 @@ export class PaymentsService implements OnModuleInit {
    * @returns الحالة الموحدة للمعالجة / Normalized processing status
    */
   normalizeCallbackStatus(status: string): 'success' | 'failed' {
-    const raw = (status ?? '').trim();
-    if (!raw) {
-      return 'failed';
-    }
-    const s = raw.toLowerCase();
-    const firstSegment = (s.split(/[,;|]/)[0] ?? s).trim();
-    const head = (firstSegment.split(/\s+/)[0] ?? firstSegment).trim();
-    if (
-      head === 'success' ||
-      head === 'paid' ||
-      head === 'completed' ||
-      head === 'captured' ||
-      head === 'authorized' ||
-      head === 'capture'
-    ) {
-      return 'success';
-    }
-    if (/\bcaptured\b/.test(s) && !/\b(not|un|de|pre)\s*captured\b/.test(s)) {
-      return 'success';
-    }
-    return 'failed';
+    return normalizeCallbackStatus(status);
   }
 
   /**
@@ -768,14 +750,14 @@ export class PaymentsService implements OnModuleInit {
       throw new BadRequestException('Order is already paid');
     }
 
-    const storedChargeKd = this.readStoredPaymentLinkChargeKd(
+    const storedChargeKd = readStoredPaymentLinkChargeKd(
       order.posGatewayMetadata,
     );
     if (
       order.posHostedPaymentUrl &&
       order.posGatewayTrackId &&
       storedChargeKd &&
-      this.paymentLinkChargeMatches(storedChargeKd, chargeAmount, tolerance)
+      paymentLinkChargeMatches(storedChargeKd, chargeAmount, tolerance)
     ) {
       return {
         url: order.posHostedPaymentUrl,
@@ -833,38 +815,6 @@ export class PaymentsService implements OnModuleInit {
       );
     }
     return link;
-  }
-
-  private readStoredPaymentLinkChargeKd(
-    metadata: Prisma.JsonValue | null,
-  ): Prisma.Decimal | null {
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-      return null;
-    }
-    const charge = (metadata as Record<string, unknown>).charge;
-    if (!charge || typeof charge !== 'object' || Array.isArray(charge)) {
-      return null;
-    }
-    const raw = (charge as Record<string, unknown>).amountKd;
-    try {
-      if (typeof raw === 'string' && raw.trim()) {
-        return new Prisma.Decimal(raw);
-      }
-      if (typeof raw === 'number' && Number.isFinite(raw)) {
-        return new Prisma.Decimal(raw);
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
-
-  private paymentLinkChargeMatches(
-    stored: Prisma.Decimal,
-    current: Prisma.Decimal,
-    tolerance: Prisma.Decimal,
-  ): boolean {
-    return stored.sub(current).abs().lessThanOrEqualTo(tolerance);
   }
 
   /**
