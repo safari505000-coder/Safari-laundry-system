@@ -3393,3 +3393,37 @@ model UserLoginHistory {
   @@index([userId, createdAt])
   @@index([outcome, createdAt])
 }
+
+// =====================================================================
+// FINANCIAL HARDENING — Accounting integrity status + daily report.
+// Additive, standalone, append-style. No FK relations and no change to
+// any existing financial model. Persisted by the daily reconciliation
+// cron so the owner has an auditable history of ledger integrity.
+// =====================================================================
+
+/// Overall integrity verdict for a single accounting-health evaluation.
+enum AccountingIntegrityStatus {
+  HEALTHY
+  WARNING
+  CRITICAL
+}
+
+/// One persisted run of the daily accounting-integrity reconciliation.
+/// `checks` holds the per-check result array (trial balance, wallet
+/// liability match, AR integrity, snapshot match, per-entry balance,
+/// audit chain, journal-failure backlog, duplicate detection). Rows are
+/// written by `AccountingIntegrityCronService`; never mutated.
+model DailyAccountingIntegrityReport {
+  id            String                    @id @default(uuid()) @db.Uuid
+  status        AccountingIntegrityStatus
+  driftCount    Int                       @default(0)
+  criticalCount Int                       @default(0)
+  warningCount  Int                       @default(0)
+  checks        Json
+  summary       String?                   @db.Text
+  generatedAt   DateTime                  @default(now())
+  durationMs    Int                       @default(0)
+
+  @@index([generatedAt])
+  @@index([status, generatedAt])
+}

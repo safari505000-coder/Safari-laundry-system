@@ -1137,6 +1137,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/orders/stale-quick-risks",
   },
   {
+    "file": "src/financial-integrity/accounting-health.controller.ts",
+    "handler": "n",
+    "method": "GET",
+    "path": "/owner/accounting-health",
+  },
+  {
     "file": "src/owner-command-center/owner-command-center.controller.ts",
     "handler": "n",
     "method": "GET",
