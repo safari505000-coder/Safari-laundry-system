@@ -1,10 +1,16 @@
 import {
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { SafariRole } from '@prisma/client';
+import {
+  AUTH_LOGIN_SUCCEEDED,
+  AuthLoginSucceededEvent,
+} from '../account-security/account-security.events';
 import { FinanceService } from '../finance/finance.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { kuwaitHour } from '../common/time/kuwait-time';
@@ -89,6 +95,11 @@ export class AuthService {
     private readonly bcryptService: BcryptService,
     private readonly operatingHours: OperatingHoursService,
     private readonly usersService: UsersService,
+    /**
+     * V10: optional so existing manual instantiations / tests keep working.
+     * Used only to emit a fire-and-forget login event for security capture.
+     */
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   /**
@@ -360,12 +371,41 @@ export class AuthService {
       expiresIn: ACCESS_TOKEN_TTL,
     });
     const refreshToken = await this.issueRefreshToken(user.id);
+    this.emitLoginSucceeded(user, roleName, refreshToken);
 
     return {
       accessToken,
       refreshToken,
       user: this.buildLoginUserDto(user, roleName),
     };
+  }
+
+  /**
+   * V10 — fire-and-forget login capture. Fully guarded so it can never
+   * affect the login response. Consumed by AccountSecurityLoginListener.
+   */
+  private emitLoginSucceeded(
+    user: UserAuthRow,
+    roleName: SafariRole,
+    refreshToken: string,
+  ): void {
+    try {
+      const event: AuthLoginSucceededEvent = {
+        userId: user.id,
+        username: (user as { username?: string | null }).username ?? null,
+        role: roleName,
+        mfaUsed: false,
+        tokenHash: sha256Hex(refreshToken),
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000),
+      };
+      this.events?.emit(AUTH_LOGIN_SUCCEEDED, event);
+    } catch (error) {
+      this.logger.warn(
+        `[AUTH] login-capture emit failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async issueRefreshToken(userId: string): Promise<string> {

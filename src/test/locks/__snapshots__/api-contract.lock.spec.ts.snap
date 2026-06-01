@@ -21,6 +21,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/laundry-price-list/items/:id",
   },
   {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "revokeSession",
+    "method": "DELETE",
+    "path": "/owner/security/sessions/:id",
+  },
+  {
     "file": "src/payroll/payroll.controller.ts",
     "handler": "removeAdHoc",
     "method": "DELETE",
@@ -1131,6 +1137,36 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/orders/stale-quick-risks",
   },
   {
+    "file": "src/owner-command-center/owner-command-center.controller.ts",
+    "handler": "n",
+    "method": "GET",
+    "path": "/owner/command-center",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "listDevices",
+    "method": "GET",
+    "path": "/owner/security/devices",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "loginHistory",
+    "method": "GET",
+    "path": "/owner/security/login-history",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "mfaStatus",
+    "method": "GET",
+    "path": "/owner/security/mfa/status",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "listSessions",
+    "method": "GET",
+    "path": "/owner/security/sessions",
+  },
+  {
     "file": "src/serials/serials.controller.ts",
     "handler": "n",
     "method": "GET",
@@ -1147,6 +1183,12 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "GET",
     "path": "/owner/serials/log",
+  },
+  {
+    "file": "src/owner-command-center/owner-command-center.controller.ts",
+    "handler": "n",
+    "method": "GET",
+    "path": "/owner/system-health",
   },
   {
     "file": "src/payment-method-fees/payment-method-fees.controller.ts",
@@ -2299,6 +2341,42 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "POST",
     "path": "/orders/quick",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "trustDevice",
+    "method": "POST",
+    "path": "/owner/security/devices/trust",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "untrustDevice",
+    "method": "POST",
+    "path": "/owner/security/devices/untrust",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "activateMfa",
+    "method": "POST",
+    "path": "/owner/security/mfa/activate",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "disableMfa",
+    "method": "POST",
+    "path": "/owner/security/mfa/disable",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "enrollMfa",
+    "method": "POST",
+    "path": "/owner/security/mfa/enroll",
+  },
+  {
+    "file": "src/account-security/account-security.controller.ts",
+    "handler": "revokeAllSessions",
+    "method": "POST",
+    "path": "/owner/security/sessions/revoke-all",
   },
   {
     "file": "src/serials/serials.controller.ts",
