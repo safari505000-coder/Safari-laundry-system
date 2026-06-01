@@ -109,6 +109,7 @@ function makeCallCenterService(prisma: Record<string, unknown>) {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
   );
 }
 
