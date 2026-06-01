@@ -58,6 +58,8 @@ import { ManagerDocumentsModule } from './manager-documents/manager-documents.mo
 import { OrdersModule } from './orders/orders.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OwnerDashboardModule } from './owner-dashboard/owner-dashboard.module';
+import { AccountSecurityModule } from './account-security/account-security.module';
+import { OwnerCommandCenterModule } from './owner-command-center/owner-command-center.module';
 import { PaymentMethodFeesModule } from './payment-method-fees/payment-method-fees.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -176,6 +178,8 @@ const scheduleModuleImports =
     FixedExpenseModule,
     OrdersModule,
     OwnerDashboardModule,
+    AccountSecurityModule,
+    OwnerCommandCenterModule,
     PaymentsModule,
     BranchesModule,
     AuditLogsModule,

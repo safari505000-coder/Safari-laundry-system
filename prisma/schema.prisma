@@ -3302,3 +3302,94 @@ model CustomerCollectionStatus {
   @@index([status])
   @@index([blocked])
 }
+
+// =====================================================================
+// V10 HARDENING — Account security (MFA / sessions / devices / login).
+// Additive, standalone tables. `userId` is a plain scalar (no FK relation)
+// so the existing `User` model is NOT modified. No financial impact.
+// =====================================================================
+
+enum MfaStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum LoginOutcome {
+  SUCCESS
+  FAILURE
+  MFA_REQUIRED
+  MFA_FAILURE
+  LOCKED
+}
+
+/// One TOTP enrollment per staff user (targeted at OWNER / ACCOUNTANT).
+/// `secret` is the base32 TOTP shared secret; `recoveryCodes` stores
+/// SHA-256 hashes of one-time recovery codes (never plaintext).
+model UserMfaSecret {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @unique @db.Uuid
+  secret        String
+  status        MfaStatus @default(PENDING)
+  recoveryCodes String[]  @default([])
+  activatedAt   DateTime?
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// An authenticated session. `tokenHash` is the SHA-256 of the issued
+/// refresh/session token. Forced logout = set `revokedAt`.
+model UserSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  tokenHash     String?   @unique
+  deviceId      String?
+  ipAddress     String?
+  userAgent     String?   @db.Text
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+}
+
+/// A known device/fingerprint a user has authenticated from.
+model UserDevice {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  deviceId      String
+  label         String?
+  platform      String?
+  lastIp        String?
+  lastUserAgent String?  @db.Text
+  trusted       Boolean  @default(false)
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}
+
+/// Append-style login history (successes and failures).
+model UserLoginHistory {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String?      @db.Uuid
+  username  String?
+  role      String?
+  outcome   LoginOutcome
+  reason    String?
+  ipAddress String?
+  userAgent String?      @db.Text
+  deviceId  String?
+  mfaUsed   Boolean      @default(false)
+  createdAt DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([outcome, createdAt])
+}
