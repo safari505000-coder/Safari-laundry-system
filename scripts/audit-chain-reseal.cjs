@@ -14,6 +14,8 @@
 
 const crypto = require('node:crypto');
 const { PrismaClient } = require('@prisma/client');
+const { PrismaPg } = require('@prisma/adapter-pg');
+const { Pool } = require('pg');
 
 const AUDIT_CHAIN_LOCK_KEY = BigInt('874163209');
 const APPLY = process.argv.includes('--apply');
@@ -44,7 +46,11 @@ async function main() {
   console.log(`[audit-reseal] database = ${maskDatabaseUrl(process.env.DATABASE_URL)}`);
   console.log(`[audit-reseal] mode     = ${APPLY ? 'APPLY' : 'DRY_RUN'}`);
 
-  const prisma = new PrismaClient();
+  // Prisma 7 in this repo runs on the pg driver adapter (no built-in query
+  // engine), so the client MUST be constructed with a PrismaPg adapter —
+  // mirroring PrismaService. A bare `new PrismaClient()` throws.
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
   try {
     const rows = await prisma.auditLog.findMany({
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -88,6 +94,7 @@ async function main() {
     console.log('[audit-reseal] apply complete.');
   } finally {
     await prisma.$disconnect();
+    await pool.end();
   }
 }
 
