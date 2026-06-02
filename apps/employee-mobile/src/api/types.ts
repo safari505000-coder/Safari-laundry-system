@@ -11,6 +11,7 @@ export type StaffRole =
   | 'ACCOUNTANT'
   | 'SUPERVISOR'
   | 'VIEWER'
+  | 'WORKER'
   | 'CUSTOMER';
 
 export type StaffUser = {

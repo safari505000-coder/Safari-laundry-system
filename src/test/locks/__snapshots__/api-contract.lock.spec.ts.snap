@@ -1287,6 +1287,42 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/presence/customer/:customerId",
   },
   {
+    "file": "src/production/production.controller.ts",
+    "handler": "s",
+    "method": "GET",
+    "path": "/production/board",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "s",
+    "method": "GET",
+    "path": "/production/garments/:id/timeline",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "s",
+    "method": "GET",
+    "path": "/production/issues",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "s",
+    "method": "GET",
+    "path": "/production/orders/:orderId/customer-status",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "ownerDashboard",
+    "method": "GET",
+    "path": "/production/owner/dashboard",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "s",
+    "method": "GET",
+    "path": "/production/workers/:id/logs",
+  },
+  {
     "file": "src/public-api/public-api.controller.ts",
     "handler": "websiteOrderRequests",
     "method": "GET",
@@ -1603,6 +1639,18 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "GET",
     "path": "/version",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "list",
+    "method": "GET",
+    "path": "/worker/tasks",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "timeline",
+    "method": "GET",
+    "path": "/worker/tasks/:id/timeline",
   },
   {
     "file": "src/branches/branches.controller.ts",
@@ -2463,6 +2511,24 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "path": "/presence/heartbeat",
   },
   {
+    "file": "src/production/production.controller.ts",
+    "handler": "intake",
+    "method": "POST",
+    "path": "/production/garments",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "decision",
+    "method": "POST",
+    "path": "/production/issues/:id/decision",
+  },
+  {
+    "file": "src/production/production.controller.ts",
+    "handler": "reassign",
+    "method": "POST",
+    "path": "/production/tasks/:id/reassign",
+  },
+  {
     "file": "src/public-api/public-api.controller.ts",
     "handler": "updateWebsiteOrderRequestStatus",
     "method": "POST",
@@ -2611,6 +2677,36 @@ exports[`API contract lock freezes public route methods and paths 1`] = `
     "handler": "n",
     "method": "POST",
     "path": "/vehicle-expenses",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "accept",
+    "method": "POST",
+    "path": "/worker/tasks/:id/accept",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "complete",
+    "method": "POST",
+    "path": "/worker/tasks/:id/complete",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "note",
+    "method": "POST",
+    "path": "/worker/tasks/:id/note",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "reportIssue",
+    "method": "POST",
+    "path": "/worker/tasks/:id/report-issue",
+  },
+  {
+    "file": "src/production/worker-tasks.controller.ts",
+    "handler": "start",
+    "method": "POST",
+    "path": "/worker/tasks/:id/start",
   },
   {
     "file": "src/commissions/commission-rules.controller.ts",

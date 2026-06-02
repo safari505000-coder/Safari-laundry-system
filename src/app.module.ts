@@ -65,6 +65,7 @@ import { PaymentMethodFeesModule } from './payment-method-fees/payment-method-fe
 import { PaymentsModule } from './payments/payments.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PosModule } from './pos/pos.module';
+import { ProductionModule } from './production/production.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PresenceModule } from './presence/presence.module';
 import { PublicApiModule } from './public-api/public-api.module';
@@ -198,6 +199,7 @@ const scheduleModuleImports =
     ManagerDocumentsModule,
     DriverOversightModule,
     PosModule,
+    ProductionModule,
     CustomersModule,
     DebtTransfersModule,
     DispatchModule,

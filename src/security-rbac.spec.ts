@@ -13,7 +13,10 @@ import { AuthController } from './auth/auth.controller';
 import { ROLES_KEY } from './auth/decorators/roles.decorator';
 import { PERMISSIONS_KEY } from './auth/permissions/permissions.decorator';
 import { AppPermission } from './auth/permissions/permissions.enum';
-import { roleHasAppPermission } from './auth/permissions/roles-permissions.map';
+import {
+  permissionsForRole,
+  roleHasAppPermission,
+} from './auth/permissions/roles-permissions.map';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { AttendanceController } from './attendance/attendance.controller';
@@ -30,6 +33,7 @@ import { OrdersService } from './orders/orders.service';
 import { OwnerDashboardController } from './owner-dashboard/owner-dashboard.controller';
 import { PayrollController } from './payroll/payroll.controller';
 import { UsersController } from './users/users.controller';
+import { WorkerTasksController } from './production/worker-tasks.controller';
 
 const COLLECTIONS_ALLOWED = [
   SafariRole.CALL_CENTER,
@@ -667,12 +671,50 @@ describe('driver and fleet operations RBAC security lock', () => {
     await expectRoleForbidden(roles!, SafariRole.FLEET_SUPERVISOR);
   });
 
-  it('WORKER can view his assigned tasks', () => {
-    const dispatch = new DispatchController({} as any);
-    const permissions = handlerPermissions(dispatch, 'listMine');
-    expect(permissions).toEqual([AppPermission.VIEW_DISPATCH]);
+  it('WORKER can access worker production task endpoints', async () => {
+    const workerTasks = new WorkerTasksController({} as any);
+    const roles = controllerRoles(workerTasks);
+    expect(roles).toEqual([SafariRole.WORKER]);
 
-    expectPermissionAllowed(permissions!, SafariRole.WORKER);
+    await expectRoleAllowed(roles!, SafariRole.WORKER);
+  });
+
+  it('WORKER has production.view and production.work (not VIEW_DISPATCH)', () => {
+    const perms = permissionsForRole(SafariRole.WORKER);
+    expect(perms).toEqual(
+      expect.arrayContaining([
+        AppPermission.VIEW_PRODUCTION,
+        AppPermission.WORK_PRODUCTION,
+        AppPermission.PRODUCTION_WASHING,
+        AppPermission.PRODUCTION_DRYING,
+        AppPermission.PRODUCTION_IRONING,
+        AppPermission.PRODUCTION_PACKING,
+        AppPermission.PRODUCTION_QC,
+      ]),
+    );
+    expect(roleHasAppPermission(SafariRole.WORKER, AppPermission.VIEW_DISPATCH)).toBe(
+      false,
+    );
+  });
+
+  it('WORKER cannot hold invoice, cash, finance, accounting, or users.manage permissions', () => {
+    const forbidden = [
+      AppPermission.VIEW_INVOICES,
+      AppPermission.CREATE_INVOICE,
+      AppPermission.UPDATE_INVOICE,
+      AppPermission.DELETE_INVOICE,
+      AppPermission.VIEW_CASH,
+      AppPermission.VIEW_DEBTS,
+      AppPermission.VIEW_FINANCIAL_REPORTS,
+      AppPermission.VIEW_CUSTOMERS,
+      AppPermission.MANAGE_USERS,
+      AppPermission.MANAGE_PRODUCTION,
+      AppPermission.VIEW_DISPATCH,
+      AppPermission.MANAGE_DISPATCH,
+    ];
+    for (const permission of forbidden) {
+      expect(roleHasAppPermission(SafariRole.WORKER, permission)).toBe(false);
+    }
   });
 
   it('WORKER cannot view branches', async () => {

@@ -34,6 +34,11 @@ export const AppPermission = {
   MANAGE_SETTINGS: 'settings.manage',
   MANAGE_STAFF: 'staff.manage',
   VIEW_CUSTOMERS: 'customers.view',
+
+  // Production Worker Layer (garment lifecycle). UI gating only.
+  VIEW_PRODUCTION: 'production.view',
+  WORK_PRODUCTION: 'production.work',
+  MANAGE_PRODUCTION: 'production.manage',
 } as const;
 
 export type AppPermission = (typeof AppPermission)[keyof typeof AppPermission];
@@ -55,6 +60,7 @@ export const ROLE_APP_PERMISSIONS: Record<SafariRole, readonly AppPermission[]> 
     AppPermission.VIEW_OPERATIONS,
     AppPermission.VIEW_CUSTOMERS,
     AppPermission.VIEW_AUDIT_LOGS,
+    AppPermission.VIEW_PRODUCTION,
   ],
   ACCOUNTANT: [
     AppPermission.VIEW_INVOICES,
@@ -84,6 +90,8 @@ export const ROLE_APP_PERMISSIONS: Record<SafariRole, readonly AppPermission[]> 
     AppPermission.VIEW_REPORTS,
     AppPermission.VIEW_INVENTORY,
     AppPermission.VIEW_CASH,
+    AppPermission.VIEW_PRODUCTION,
+    AppPermission.MANAGE_PRODUCTION,
   ],
   // Matches backend: list expenses is scoped to own rows for drivers.
   DRIVER: [
@@ -125,6 +133,7 @@ export const ROLE_APP_PERMISSIONS: Record<SafariRole, readonly AppPermission[]> 
     AppPermission.VIEW_REPORTS,
     AppPermission.VIEW_OPERATIONS,
     AppPermission.UPDATE_OPERATIONS,
+    AppPermission.VIEW_PRODUCTION,
   ],
   VIEWER: [
     AppPermission.VIEW_INVOICES,

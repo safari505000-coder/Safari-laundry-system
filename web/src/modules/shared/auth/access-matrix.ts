@@ -473,6 +473,15 @@ export const ACCESS = {
     'GENERAL_MANAGER',
     'OWNER',
   ),
+
+  // ─── Production Worker Layer (garment lifecycle) ───────────────────
+  // Operational, non-financial. WORKER is not a web admin login role; the
+  // worker task UI lives in the employee-mobile app. These keys gate the
+  // management/oversight production screens only.
+  // View board / issues / garment timeline / worker logs.
+  'production.view': withExec('MANAGER', 'SUPERVISOR'),
+  // Take quality decisions, reassign, garment intake (own branch / all).
+  'production.manage': ['OWNER', 'MANAGER'] satisfies readonly SafariRole[],
 } as const satisfies Record<string, readonly SafariRole[]>;
 
 export type AccessKey = keyof typeof ACCESS;

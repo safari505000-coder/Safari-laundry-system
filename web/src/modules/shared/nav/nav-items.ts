@@ -1008,3 +1008,33 @@ export const insightsAiItem: NavItem = {
   roles: ['OWNER', 'GENERAL_MANAGER', 'ACCOUNTANT', 'MANAGER'],
   permission: AppPermission.VIEW_REPORTS,
 };
+
+/**
+ * Production Worker Layer (garment lifecycle) — operational, non-financial.
+ * Board + issues are visible to the exec pair, branch MANAGER, and
+ * SUPERVISOR; worker logs are the same audience. WORKER itself is not a
+ * web-admin login role (worker tasks live in the employee-mobile app).
+ */
+export const productionBoardItem: NavItem = {
+  to: '/production/board',
+  labelKey: 'nav.productionBoard',
+  icon: ClipboardCheck,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'SUPERVISOR'],
+  permission: AppPermission.VIEW_PRODUCTION,
+};
+
+export const productionIssuesItem: NavItem = {
+  to: '/production/issues',
+  labelKey: 'nav.productionIssues',
+  icon: AlertTriangle,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'SUPERVISOR'],
+  permission: AppPermission.VIEW_PRODUCTION,
+};
+
+export const productionWorkersItem: NavItem = {
+  to: '/production/workers',
+  labelKey: 'nav.productionWorkers',
+  icon: Users,
+  roles: ['OWNER', 'GENERAL_MANAGER', 'MANAGER', 'SUPERVISOR'],
+  permission: AppPermission.VIEW_PRODUCTION,
+};

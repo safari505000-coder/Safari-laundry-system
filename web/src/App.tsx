@@ -47,6 +47,26 @@ const StatementPrintPage = lazyPage(
   () => import('@/pages/statement-print-page'),
   'StatementPrintPage',
 );
+const ProductionBoardPage = lazyPage(
+  () => import('@/modules/production/pages/production-board-page'),
+  'ProductionBoardPage',
+);
+const ProductionIssuesPage = lazyPage(
+  () => import('@/modules/production/pages/production-issues-page'),
+  'ProductionIssuesPage',
+);
+const ProductionGarmentPage = lazyPage(
+  () => import('@/modules/production/pages/production-garment-page'),
+  'ProductionGarmentPage',
+);
+const ProductionWorkersPage = lazyPage(
+  () => import('@/modules/production/pages/production-workers-page'),
+  'ProductionWorkersPage',
+);
+const WorkerTasksPage = lazyPage(
+  () => import('@/modules/production/pages/worker-tasks-page'),
+  'WorkerTasksPage',
+);
 import { PublicStatementPage } from '@/pages/public-statement-page';
 import { PublicInvoicePage } from '@/pages/public-invoice-page';
 import { FeedbackPublicPage } from '@/pages/feedback-public-page';
@@ -562,6 +582,46 @@ export default function App() {
                   element={
                     <RequireAccess access="purchaseOrders.view">
                       <PurchaseOrdersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="production/board"
+                  element={
+                    <RequireAccess access="production.view">
+                      <ProductionBoardPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="production/issues"
+                  element={
+                    <RequireAccess access="production.view">
+                      <ProductionIssuesPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="production/garments/:id"
+                  element={
+                    <RequireAccess access="production.view">
+                      <ProductionGarmentPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="production/workers"
+                  element={
+                    <RequireAccess access="production.view">
+                      <ProductionWorkersPage />
+                    </RequireAccess>
+                  }
+                />
+                <Route
+                  path="worker/tasks"
+                  element={
+                    <RequireAccess access="production.view">
+                      <WorkerTasksPage />
                     </RequireAccess>
                   }
                 />

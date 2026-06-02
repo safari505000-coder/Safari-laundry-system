@@ -39,4 +39,20 @@ export enum AppPermission {
 
   /** Reset staff passwords (single/bulk); does NOT grant unrelated HR edits. */
   MANAGE_USERS = 'users.manage',
+
+  // Production Worker Layer (garment lifecycle). Activates the WORKER role
+  // as an in-plant production function. These NEVER grant any financial,
+  // invoice, cash, custody, or customer-data access.
+  // VIEW_PRODUCTION    → read production board / timelines / worker logs.
+  // WORK_PRODUCTION    → a worker accepts/starts/completes/reports OWN tasks.
+  // MANAGE_PRODUCTION  → manager/QC decisions, reassignment, garment intake.
+  VIEW_PRODUCTION = 'production.view',
+  WORK_PRODUCTION = 'production.work',
+  MANAGE_PRODUCTION = 'production.manage',
+  // Worker specialisation hints (assignment-level; all imply WORK_PRODUCTION).
+  PRODUCTION_WASHING = 'production.washing',
+  PRODUCTION_DRYING = 'production.drying',
+  PRODUCTION_IRONING = 'production.ironing',
+  PRODUCTION_PACKING = 'production.packing',
+  PRODUCTION_QC = 'production.qc',
 }

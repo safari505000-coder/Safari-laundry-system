@@ -1,10 +1,17 @@
+import type { Href } from 'expo-router';
 import type { StaffRole } from '@/api/types';
 
-export type MobileAppRole = 'driver' | 'call-center' | 'manager' | 'unsupported';
+export type MobileAppRole =
+  | 'driver'
+  | 'call-center'
+  | 'manager'
+  | 'worker'
+  | 'unsupported';
 export type MobileHomeHref =
   | '/(app)/(driver)/(tabs)/tasks'
   | '/(app)/(call-center)'
   | '/(app)/(manager)'
+  | '/(app)/(worker)/tasks'
   | '/(app)/unsupported';
 
 const DRIVER_ROLES: StaffRole[] = ['DRIVER'];
@@ -17,6 +24,7 @@ const MANAGER_ROLES: StaffRole[] = [
   'OWNER',
   'GENERAL_MANAGER',
 ];
+const WORKER_ROLES: StaffRole[] = ['WORKER'];
 
 export function resolveMobileAppRole(role: StaffRole): MobileAppRole {
   if (DRIVER_ROLES.includes(role)) {
@@ -28,10 +36,13 @@ export function resolveMobileAppRole(role: StaffRole): MobileAppRole {
   if (MANAGER_ROLES.includes(role)) {
     return 'manager';
   }
+  if (WORKER_ROLES.includes(role)) {
+    return 'worker';
+  }
   return 'unsupported';
 }
 
-export function homeHrefForRole(role: StaffRole): MobileHomeHref {
+export function homeHrefForRole(role: StaffRole): Href {
   switch (resolveMobileAppRole(role)) {
     case 'driver':
       return '/(app)/(driver)/(tabs)/tasks';
@@ -39,6 +50,10 @@ export function homeHrefForRole(role: StaffRole): MobileHomeHref {
       return '/(app)/(call-center)';
     case 'manager':
       return '/(app)/(manager)';
+    case 'worker':
+      // Route is registered on disk; the typed-routes d.ts regenerates on
+      // the next `expo start`, after which this cast is a no-op.
+      return '/(app)/(worker)/tasks' as Href;
     default:
       return '/(app)/unsupported';
   }
@@ -62,6 +77,8 @@ export function roleLabelAr(role: StaffRole): string {
       return 'محاسب';
     case 'FLEET_SUPERVISOR':
       return 'مشرف أسطول';
+    case 'WORKER':
+      return 'عامل إنتاج';
     default:
       return role;
   }

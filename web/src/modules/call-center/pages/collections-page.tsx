@@ -419,18 +419,6 @@ export function CollectionsPage() {
   );
 
   /**
-   * Same delivery as the primary WhatsApp action: ensure hosted URL, respect
-   * reminder/cooldown, then open `wa.me` to the **customer** with the link —
-   * never open the UPayments tab on the operator's browser.
-   */
-  const handlePaymentLink = useCallback(
-    (row: CollectionUnpaidOnlineRow) => {
-      return handleWhatsApp(row);
-    },
-    [handleWhatsApp],
-  );
-
-  /**
    * V1.6.9 — "تم الدفع" confirmation.
    *
    * The agent has just confirmed the customer paid outside the hosted
@@ -1161,25 +1149,6 @@ export function CollectionsPage() {
                           <CheckCircle2 className="h-4 w-4" aria-hidden />
                           {t('collections.markPaid')}
                         </Button>
-                        {/* V1.6.7 — KNET / Manual-Settlement button
-                            hidden in favor of the unified WhatsApp Send-
-                            Link flow. See mobile block for rationale. */}
-                        {false && (
-                          <button
-                            type="button"
-                            disabled={reminderBusy}
-                            onClick={() => void handlePaymentLink(row)}
-                            className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-                            title={t('collections.paymentLink')}
-                            aria-label={t('collections.paymentLink')}
-                          >
-                            {reminderBusy ? (
-                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                            ) : (
-                              <CreditCard className="h-4 w-4" aria-hidden />
-                            )}
-                          </button>
-                        )}
                       </div>
                     </TableCell>
                   ) : null}

@@ -36,6 +36,9 @@ import {
   managerCustodyAgingItem,
   ownerInventoryItem,
   ownerSerialsItem,
+  productionBoardItem,
+  productionIssuesItem,
+  productionWorkersItem,
   purchaseOrdersItem,
   salesSummaryReportItem,
   shiftsItem,
@@ -130,7 +133,14 @@ export const defaultSidebarNavGroups: NavGroup[] = [
   },
   {
     ...G.operations,
-    items: [driverMonitorItem, shiftsItem, attendanceItem],
+    items: [
+      driverMonitorItem,
+      shiftsItem,
+      attendanceItem,
+      productionBoardItem,
+      productionIssuesItem,
+      productionWorkersItem,
+    ],
   },
   {
     // V19.17 — Staff/HR operational surfaces (payroll, attendance,
