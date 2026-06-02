@@ -11,6 +11,9 @@ import {
   myDocumentsItem,
   ordersItem,
   posItem,
+  productionBoardItem,
+  productionIssuesItem,
+  productionWorkersItem,
   shiftsItem,
 } from '@/modules/shared/nav/nav-items';
 
@@ -54,7 +57,13 @@ export const managerSidebarNavGroups: NavGroup[] = [
     // branch-scoped monitoring surfaces — grouped together so the
     // manager sees them side-by-side.
     ...G.operations,
-    items: [driverOversightItem, shiftsItem],
+    items: [
+      driverOversightItem,
+      shiftsItem,
+      productionBoardItem,
+      productionIssuesItem,
+      productionWorkersItem,
+    ],
   },
   {
     ...G.adminSettings,

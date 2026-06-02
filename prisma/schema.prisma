@@ -3427,3 +3427,258 @@ model DailyAccountingIntegrityReport {
   @@index([generatedAt])
   @@index([status, generatedAt])
 }
+
+// =====================================================================
+// PRODUCTION WORKER LAYER (Garment Lifecycle)
+// Additive, standalone. Activates the existing WORKER SafariRole as a
+// real in-plant production function. References to User / Order / Branch
+// are SCALAR UUID columns (no Prisma FK relations) — exactly like
+// DailyAccountingIntegrityReport above — so the large User/Order/Branch
+// models and all accounting / POS / invoice / payment logic are NOT
+// touched. Relations exist only between these new production tables.
+// Garments are created by the production intake flow (sorting), never
+// auto-created at POS checkout, so POS business logic is unchanged.
+// =====================================================================
+
+/// Garment production stages + exception states (single enum so a
+/// garment's `currentStage` always reflects either a normal step or an
+/// exception hold).
+enum GarmentStage {
+  RECEIVED
+  SORTING
+  WASHING
+  DRYING
+  IRONING
+  PACKING
+  QC_CHECK
+  READY
+  DELIVERED
+  // Exception states
+  QUALITY_HOLD
+  REWORK
+  REPAIR
+  DAMAGED_REVIEW
+  LOST_REVIEW
+}
+
+/// Worker specialisation, expressed as an assignment type rather than a
+/// new SafariRole (the WORKER role stays the single login role).
+enum ProductionWorkType {
+  WASHING_WORKER
+  DRYING_WORKER
+  IRONING_WORKER
+  PACKING_WORKER
+  QC_WORKER
+}
+
+/// Per-garment task state machine for the current stage:
+/// WAITING_NEXT_STAGE → ACCEPTED_BY_WORKER → IN_PROGRESS → COMPLETED.
+/// QUALITY_HOLD freezes the garment when an issue is open.
+enum GarmentTaskStatus {
+  WAITING_NEXT_STAGE
+  ACCEPTED_BY_WORKER
+  IN_PROGRESS
+  COMPLETED
+  QUALITY_HOLD
+}
+
+/// Stage-handoff SLA status (the wait between one worker completing and
+/// the next worker accepting).
+enum StageHandoffStatus {
+  WAITING_NEXT_STAGE
+  ACCEPTED_BY_NEXT_WORKER
+  DELAYED_HANDOFF
+  ESCALATED
+}
+
+/// Append-only event verbs recorded on every garment movement.
+enum GarmentStageAction {
+  ACCEPTED
+  STARTED
+  COMPLETED
+  HANDED_OFF
+  DELAYED
+  ISSUE_REPORTED
+  DECISION_MADE
+  REWORK_SENT
+  READY_MARKED
+}
+
+/// Quality / handling defect categories a worker can report.
+enum GarmentIssueType {
+  STAIN_REMAINING
+  BURN_MARK
+  TEAR
+  MISSING_BUTTON
+  COLOR_DAMAGE
+  WRONG_ITEM
+  MISSING_ITEM
+  BAD_SMELL
+  OTHER
+}
+
+/// Lifecycle of a reported garment issue.
+enum GarmentIssueStatus {
+  OPEN
+  UNDER_REVIEW
+  REWORKING
+  REPAIRED
+  DAMAGED
+  LOST
+  CLOSED
+}
+
+/// Manager / QC / Owner decision on an open issue.
+enum ProductionDecisionType {
+  REWASH
+  REIRON
+  REPAIR
+  APPROVE_AS_READY
+  ESCALATE_TO_OWNER
+  MARK_DAMAGED
+  MARK_LOST
+}
+
+/// A tracked production unit inside the plant. One garment belongs to one
+/// Order; service type is mirrored from the order at intake for SLA
+/// purposes only (no pricing / accounting coupling).
+model Garment {
+  id              String             @id @default(uuid()) @db.Uuid
+  orderId         String             @db.Uuid
+  orderLineItemId String?            @db.Uuid
+  branchId        String             @db.Uuid
+  /// Human label (e.g. "قميص أبيض" / tag number). Optional.
+  label           String?
+  serviceType     ServiceType        @default(NORMAL)
+  currentStage    GarmentStage       @default(RECEIVED)
+  taskStatus      GarmentTaskStatus  @default(WAITING_NEXT_STAGE)
+  handoffStatus   StageHandoffStatus @default(WAITING_NEXT_STAGE)
+  /// Worker pre-assigned to the current stage (optional). When null the
+  /// handoff delay is attributed to the stage queue / branch manager.
+  assignedWorkerId String?           @db.Uuid
+  /// Current task ownership / timing.
+  acceptedByUserId String?           @db.Uuid
+  acceptedAt       DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  /// Handoff SLA counters for the current waiting window.
+  handoffFromStage GarmentStage?
+  waitingSince     DateTime?
+  expectedAcceptBy DateTime?
+  delayMinutes     Int                @default(0)
+  /// SLA target for the whole garment (mirrored from service type).
+  expectedReadyAt  DateTime?
+  /// True while any GarmentIssue is not CLOSED/REPAIRED — blocks READY.
+  hasOpenIssue     Boolean            @default(false)
+  /// Internal production note (never customer-facing).
+  internalNotes    String?            @db.Text
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  stageEvents GarmentStageEvent[]
+  workerLogs  WorkerProductionLog[]
+  issues      GarmentIssue[]
+
+  @@index([orderId])
+  @@index([branchId])
+  @@index([branchId, currentStage])
+  @@index([assignedWorkerId])
+  @@index([taskStatus])
+  @@index([handoffStatus])
+  @@index([hasOpenIssue])
+}
+
+/// Append-only ledger of every garment movement. Never updated/deleted.
+model GarmentStageEvent {
+  id          String             @id @default(uuid()) @db.Uuid
+  garmentId   String             @db.Uuid
+  orderId     String             @db.Uuid
+  branchId    String             @db.Uuid
+  fromStage   GarmentStage?
+  toStage     GarmentStage
+  actorUserId String?            @db.Uuid
+  action      GarmentStageAction
+  notes       String?            @db.Text
+  createdAt   DateTime           @default(now())
+
+  garment Garment @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+
+  @@index([garmentId, createdAt])
+  @@index([orderId])
+  @@index([branchId, createdAt])
+  @@index([actorUserId])
+}
+
+/// Per-worker productivity log (one row per started→completed task, or per
+/// reported issue). Append-only.
+model WorkerProductionLog {
+  id                     String             @id @default(uuid()) @db.Uuid
+  userId                 String             @db.Uuid
+  branchId               String             @db.Uuid
+  stage                  GarmentStage
+  garmentId              String             @db.Uuid
+  orderId                String             @db.Uuid
+  action                 GarmentStageAction
+  startedAt              DateTime?
+  completedAt            DateTime?
+  durationMinutes        Int?
+  issueReported          Boolean            @default(false)
+  issueAttributedToUserId String?           @db.Uuid
+  createdAt              DateTime           @default(now())
+
+  garment Garment @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([branchId, stage])
+  @@index([garmentId])
+  @@index([orderId])
+}
+
+/// A reported defect / handling problem on a garment. Blocks the garment
+/// from reaching READY until resolved.
+model GarmentIssue {
+  id                  String             @id @default(uuid()) @db.Uuid
+  garmentId           String             @db.Uuid
+  orderId             String             @db.Uuid
+  branchId            String             @db.Uuid
+  reportedByUserId    String?            @db.Uuid
+  stage               GarmentStage
+  previousStage       GarmentStage?
+  previousActorUserId String?            @db.Uuid
+  issueType           GarmentIssueType
+  status              GarmentIssueStatus @default(OPEN)
+  notes               String?            @db.Text
+  photoUrl            String?            @db.Text
+  createdAt           DateTime           @default(now())
+  closedAt            DateTime?
+
+  garment   Garment              @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+  decisions ProductionDecision[]
+
+  @@index([garmentId])
+  @@index([orderId])
+  @@index([branchId, status])
+  @@index([status])
+}
+
+/// Manager / QC / Owner decision taken on an open issue. Append-only.
+model ProductionDecision {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  issueId                String                 @db.Uuid
+  garmentId              String                 @db.Uuid
+  orderId                String                 @db.Uuid
+  decidedByUserId        String?                @db.Uuid
+  decision               ProductionDecisionType
+  notes                  String?                @db.Text
+  nextStage              GarmentStage?
+  customerContactRequired Boolean               @default(false)
+  compensationRequired   Boolean                @default(false)
+  createdAt              DateTime               @default(now())
+
+  issue GarmentIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([garmentId])
+  @@index([orderId])
+  @@index([decidedByUserId])
+}

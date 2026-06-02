@@ -34,6 +34,8 @@ export const ROLE_PERMISSIONS = {
     AppPermission.VIEW_CUSTOMERS,
     AppPermission.VIEW_DISPATCH,
     AppPermission.MANAGE_USERS,
+    // Read-only production oversight across all branches.
+    AppPermission.VIEW_PRODUCTION,
   ],
   [SafariRole.ACCOUNTANT]: [
     ...invoiceRead,
@@ -56,6 +58,9 @@ export const ROLE_PERMISSIONS = {
     AppPermission.UPDATE_OPERATIONAL_DATA,
     AppPermission.VIEW_DISPATCH,
     AppPermission.MANAGE_USERS,
+    // Branch production oversight + quality decisions (own branch).
+    AppPermission.VIEW_PRODUCTION,
+    AppPermission.MANAGE_PRODUCTION,
   ],
   // DRIVER may GET /expenses only for own rows (listForUser scopes by recordedById).
   [SafariRole.DRIVER]: [
@@ -100,6 +105,8 @@ export const ROLE_PERMISSIONS = {
     AppPermission.UPDATE_OPERATIONAL_DATA,
     AppPermission.MANAGE_USERS,
     AppPermission.VIEW_DISPATCH,
+    // Production analytics / bottleneck oversight (read-only, all branches).
+    AppPermission.VIEW_PRODUCTION,
   ],
   [SafariRole.VIEWER]: [
     ...invoiceRead,
@@ -107,7 +114,18 @@ export const ROLE_PERMISSIONS = {
     AppPermission.VIEW_CUSTOMERS,
   ],
   [SafariRole.CUSTOMER]: [AppPermission.VIEW_CUSTOMERS],
-  [SafariRole.WORKER]: [AppPermission.VIEW_DISPATCH],
+  // V-prod — WORKER is now a real in-plant production role. It can ONLY
+  // see and act on its own garment tasks. No invoice/cash/customer/finance
+  // permission is granted, by design (see PRODUCTION_ROLE_VISIBILITY_MATRIX).
+  [SafariRole.WORKER]: [
+    AppPermission.VIEW_PRODUCTION,
+    AppPermission.WORK_PRODUCTION,
+    AppPermission.PRODUCTION_WASHING,
+    AppPermission.PRODUCTION_DRYING,
+    AppPermission.PRODUCTION_IRONING,
+    AppPermission.PRODUCTION_PACKING,
+    AppPermission.PRODUCTION_QC,
+  ],
 } satisfies Record<SafariRole, readonly AppPermission[]>;
 
 /**
